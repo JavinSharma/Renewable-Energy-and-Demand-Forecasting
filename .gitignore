@@ -1,0 +1,22 @@
+# Raw datasets (too large for GitHub standard push)
+archive/
+unisolar/
+
+# Processed intermediate data
+data/processed_demand.csv
+
+# Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+.env
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
