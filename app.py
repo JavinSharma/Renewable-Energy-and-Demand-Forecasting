@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 from src.energy_manager import compute_energy_balance
 
 st.set_page_config(
-    page_title="AI Energy Forecasting & Renewable Integration",
+    page_title="Smart Energy Demand Forecasting & Renewable Integration",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -36,31 +36,26 @@ def load_datasets():
 
 def main():
     # Application Title & Banner
-    st.title("⚡ AI-Based Energy Demand Forecasting for Renewable Integration")
-    st.markdown("""
-    **Capstone Project System Architecture**: 
-    - 👤 **Member 1**: Electricity Demand Forecasting (XGBoost)
-    - 👤 **Member 2**: Solar Generation Forecasting (XGBoost)
-    - 👤 **Member 3**: Energy Balance, Grid Requirement Optimization & Dashboard
-    """)
+    st.title("⚡ Smart Energy Demand Forecasting & Renewable Integration Platform")
+    st.caption("AI-driven short-term electricity load prediction, solar generation forecasting, and microgrid energy storage management.")
     st.divider()
 
     df_demand, df_solar = load_datasets()
 
     # Sidebar Controls
-    st.sidebar.header("⚙️ Simulation Controls")
+    st.sidebar.header("⚙️ System Configuration & Controls")
     
     input_mode = st.sidebar.radio(
         "Select Operation Mode:",
-        ["📅 Historical Test Data Benchmark", "🎛️ Interactive 'What-If' Simulator"]
+        ["📅 Historical Benchmark Analysis", "🎛️ Live Scenario Simulator"]
     )
     
-    st.sidebar.subheader("🔋 Battery Storage Configuration")
+    st.sidebar.subheader("🔋 Battery Energy Storage System (BESS)")
     bess_capacity = st.sidebar.slider("Battery Capacity (kWh)", min_value=100.0, max_value=2000.0, value=500.0, step=50.0)
     max_charge_rate = st.sidebar.slider("Max Charge/Discharge Rate (kW)", min_value=50.0, max_value=500.0, value=150.0, step=25.0)
     initial_soc = st.sidebar.slider("Initial State of Charge (%)", min_value=0.0, max_value=100.0, value=50.0, step=10.0)
 
-    if input_mode == "📅 Historical Test Data Benchmark":
+    if input_mode == "📅 Historical Benchmark Analysis":
         if df_demand is None or df_demand.empty:
             st.error("Demand forecast dataset not found. Please run `python src/train_demand_model.py` first.")
             return
@@ -93,7 +88,7 @@ def main():
             if df_solar is not None:
                 df_sub_solar = df_solar.iloc[:horizon_hours * 4].copy()
 
-        # Compute energy balance logic via Member 3 Engine
+        # Compute energy balance logic via Integration Engine
         df_res, kpis = compute_energy_balance(
             df_sub_demand,
             df_sub_solar,
@@ -104,11 +99,11 @@ def main():
 
     else:
         # Interactive Simulator Mode
-        st.sidebar.subheader("🎛️ Environment Parameters")
+        st.sidebar.subheader("🎛️ Environmental & Load Simulation")
         sim_hours = st.sidebar.slider("Simulation Duration (Hours)", min_value=12, max_value=48, value=24)
         ghi_peak = st.sidebar.slider("Peak Solar Irradiance GHI (W/m²)", min_value=0, max_value=1000, value=750, step=50)
         temp_ambient = st.sidebar.slider("Ambient Temperature (°C)", min_value=10.0, max_value=45.0, value=28.0)
-        demand_multiplier = st.sidebar.slider("Campus Activity Level Multiplier", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
+        demand_multiplier = st.sidebar.slider("Facility Load Factor Multiplier", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
 
         # Synthetic curve generation for scenario testing
         time_range = pd.date_range(start="2026-10-01 00:00:00", periods=sim_hours, freq="1h")
@@ -138,29 +133,29 @@ def main():
 
     # Render Dashboard Tabs
     tab1, tab2, tab3 = st.tabs([
-        "📊 Renewable Integration Dashboard",
-        "🔋 Battery Storage & Grid Management (Member 3)",
-        "🤖 Model Performance & Raw Data"
+        "📊 Renewable Energy Integration Dashboard",
+        "🔋 Battery Storage & Microgrid Management",
+        "🤖 Predictive Models & Export Data"
     ])
 
     with tab1:
-        st.subheader("💡 Key Energy Performance Indicators")
+        st.subheader("💡 Key Performance Indicators")
         col1, col2, col3, col4 = st.columns(4)
         
-        col1.metric("⚡ Total Expected Demand", f"{kpis['total_demand_kWh']:,.1f} kWh")
+        col1.metric("⚡ Total Predicted Demand", f"{kpis['total_demand_kWh']:,.1f} kWh")
         col2.metric("☀️ Total Solar Generation", f"{kpis['total_solar_kWh']:,.1f} kWh")
         col3.metric("🔌 Net Grid Import Required", f"{kpis['total_grid_import_kWh']:,.1f} kWh")
         col4.metric("🌱 Renewable Contribution", f"{kpis['overall_renewable_contribution_pct']:.1f}%")
 
         st.divider()
-        st.subheader("📈 Energy Balance Timeline (Demand vs Solar vs Net Grid Import)")
+        st.subheader("📈 Integrated Load & Renewable Forecast Curve")
 
         fig = make_subplots(specs=[[{"secondary_y": True}]])
         
         fig.add_trace(
             go.Scatter(
                 x=df_res['timestamp'], y=df_res['demand_kWh'],
-                name="⚡ Predicted Demand (Member 1)",
+                name="⚡ Demand Forecast",
                 line=dict(color="#EF553B", width=2.5)
             ),
             secondary_y=False
@@ -169,7 +164,7 @@ def main():
         fig.add_trace(
             go.Scatter(
                 x=df_res['timestamp'], y=df_res['solar_kWh'],
-                name="☀️ Predicted Solar (Member 2)",
+                name="☀️ Solar Generation Forecast",
                 line=dict(color="#FECB52", width=2.5),
                 fill='tozeroy', fillcolor='rgba(254, 203, 82, 0.15)'
             ),
@@ -179,7 +174,7 @@ def main():
         fig.add_trace(
             go.Scatter(
                 x=df_res['timestamp'], y=df_res['net_grid_import_kWh'],
-                name="🔌 Net Grid Import (Member 3)",
+                name="🔌 Net Grid Requirement",
                 line=dict(color="#636EFA", width=2.5, dash="dash")
             ),
             secondary_y=False
@@ -230,7 +225,7 @@ def main():
             fig_bess.add_trace(
                 go.Bar(
                     x=df_res['timestamp'], y=df_res['battery_charge_kWh'],
-                    name="Charge (Surplus Solar)",
+                    name="Charge (Solar Surplus)",
                     marker_color="#2CA02C"
                 ),
                 row=2, col=1
@@ -238,7 +233,7 @@ def main():
             fig_bess.add_trace(
                 go.Bar(
                     x=df_res['timestamp'], y=-df_res['battery_discharge_kWh'],
-                    name="Discharge (Deficit Offset)",
+                    name="Discharge (Grid Deficit Offset)",
                     marker_color="#D62728"
                 ),
                 row=2, col=1
@@ -259,47 +254,47 @@ def main():
             st.success(f"**Total Battery Discharged**: `{total_discharged:,.1f} kWh`")
             st.warning(f"**Surplus Solar Exported to Grid**: `{kpis['total_surplus_export_kWh']:,.1f} kWh`")
             
-            st.markdown("#### Operational Log Sample")
+            st.markdown("#### Operational Dispatch Log Sample")
             st.dataframe(
                 df_res[['timestamp', 'demand_kWh', 'solar_kWh', 'battery_soc_pct', 'dispatch_status']].head(10),
                 hide_index=True
             )
 
     with tab3:
-        st.subheader("🤖 Individual ML Model Metrics & Diagnostics")
+        st.subheader("🤖 Predictive Models & System Performance")
         
         c_m1, c_m2 = st.columns(2)
         with c_m1:
-            st.markdown("### ⚡ Member 1 — Demand Forecasting Model")
+            st.markdown("### ⚡ Electricity Demand Model")
             st.markdown("""
-            - **Algorithm**: XGBoost Regressor (`models/demand_model.pkl`)
-            - **Evaluation Metrics**:
+            - **Model Type**: XGBoost Regressor (`models/demand_model.pkl`)
+            - **Accuracy Metrics**:
               - **R² Score**: `0.9228` (92.3% variance explained)
               - **MAE**: `75.50 kWh`
               - **RMSE**: `126.24 kWh`
-            - **Top Features**: `lag_1h`, `lag_168h`, `hour`, `sin_hour`, `cos_hour`
+            - **Key Predictors**: Lagged load (`lag_1h`, `lag_168h`), Time of day, Harmonic sine/cosine hour encodings
             """)
             
         with c_m2:
-            st.markdown("### ☀️ Member 2 — Solar Generation Forecasting Model")
+            st.markdown("### ☀️ Solar Photovoltaic Generation Model")
             st.markdown("""
-            - **Algorithm**: XGBoost Regressor (`model2/final_model/xgboost_model.json`)
-            - **Evaluation Metrics**:
-              - **R² Score**: `~0.96` (High Daylight Accuracy)
+            - **Model Type**: XGBoost Regressor (`model2/final_model/xgboost_model.json`)
+            - **Accuracy Metrics**:
+              - **R² Score**: `~0.96` (High Daylight Precision)
               - **MAE**: `0.010 kWh / 15-min`
-            - **Top Features**: `Ghi`, `solar_elevation`, `lag_1`, `rolling_mean_1h`
+            - **Key Predictors**: Global Horizontal Irradiance (GHI), Solar Elevation, Trailing Generation
             """)
             
         st.divider()
-        st.subheader("📄 Exportable Predictions & Energy Balance Table")
+        st.subheader("📄 Raw Forecast Data & Download")
         
         st.dataframe(df_res, use_container_width=True)
         
         csv_data = df_res.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="📥 Download Forecast Results CSV",
+            label="📥 Download Integrated Forecast CSV",
             data=csv_data,
-            file_name="renewable_integration_forecast.csv",
+            file_name="smart_energy_forecast_integration.csv",
             mime="text/csv"
         )
 
