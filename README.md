@@ -1,1 +1,1 @@
-abstract goes here
+This project presents an AI-based framework for forecasting electricity demand and solar power generation to support smarter renewable energy integration and grid planning. Using the Solar Power Generation and Energy Consumption dataset, the system combines historical energy data with weather and time-based information to predict future demand and solar output.
