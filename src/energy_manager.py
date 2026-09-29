@@ -1,9 +1,8 @@
 """
-energy_manager.py — Member 3 Integration & Energy Management Engine
+energy_manager.py — Member 3 Integration, Energy Management & Financial Payback Engine
 
-Component: Member 3 — Renewable Integration & Energy Balance Optimization
 Calculates grid requirements, renewable contribution percentages, surplus/deficit states,
-and simulates battery energy storage system (BESS) dispatch.
+battery energy storage system (BESS) dispatch, and payback period in Rupees (₹).
 """
 
 import numpy as np
@@ -19,24 +18,6 @@ def compute_energy_balance(
     """
     Computes hourly energy balance, grid requirement, renewable contribution,
     and battery storage dispatch given demand and solar predictions.
-
-    Parameters:
-    -----------
-    df_demand : pd.DataFrame
-        DataFrame with ['timestamp', 'predicted_demand_kWh'] (or 'demand_kWh').
-    df_solar : pd.DataFrame or None
-        DataFrame with ['timestamp'/'Timestamp', 'predicted_solar_kWh'].
-    battery_capacity_kwh : float
-        Maximum capacity of battery storage system in kWh.
-    max_charge_rate_kw : float
-        Maximum charge/discharge power rate in kW (equivalent to kWh per hour).
-    initial_soc_pct : float
-        Starting State of Charge percentage (0 to 100%).
-
-    Returns:
-    --------
-    pd.DataFrame containing full energy balance breakdown per timestamp.
-    dict containing summary KPIs.
     """
     df = df_demand.copy()
     
@@ -57,12 +38,10 @@ def compute_energy_balance(
     if df_solar is not None and not df_solar.empty:
         df_s = df_solar.copy()
         
-        # Standardize solar timestamp column
         if 'timestamp' not in df_s.columns and 'Timestamp' in df_s.columns:
             df_s['timestamp'] = df_s['Timestamp']
         df_s['timestamp'] = pd.to_datetime(df_s['timestamp'])
 
-        # Standardize solar target column
         if 'predicted_solar_kWh' in df_s.columns:
             df_s['solar_kWh'] = df_s['predicted_solar_kWh']
         elif 'Predicted_Generation_XGBoost' in df_s.columns:
@@ -175,10 +154,69 @@ def compute_energy_balance(
         'total_solar_kWh': float(total_solar),
         'total_grid_import_kWh': float(total_grid_import),
         'total_surplus_export_kWh': float(total_surplus_export),
+        'total_renewable_used_kWh': float(total_renewable_used),
         'overall_renewable_contribution_pct': float(avg_renewable_pct),
         'peak_demand_kWh': float(df['demand_kWh'].max()),
         'peak_solar_kWh': float(df['solar_kWh'].max()),
-        'battery_capacity_kwh': battery_capacity_kwh
+        'battery_capacity_kwh': battery_capacity_kwh,
+        'total_hours': len(df)
     }
 
     return df, kpis
+
+
+def compute_financial_payback(
+    kpis,
+    solar_kw_capacity,
+    battery_kwh_capacity,
+    grid_rate_rs_per_kwh=8.5,
+    solar_cost_rs_per_kw=55000.0,
+    battery_cost_rs_per_kwh=18000.0
+):
+    """
+    Calculates initial capital investment, annual electricity bill savings,
+    and payback period (Years & Months) in Rupees (₹).
+    """
+    hours_in_period = max(1, kpis.get('total_hours', 24))
+    annual_factor = 8760.0 / hours_in_period
+    
+    annual_demand_kwh = kpis['total_demand_kWh'] * annual_factor
+    annual_renewable_kwh_used = kpis['total_renewable_used_kWh'] * annual_factor
+    
+    # Financial CAPEX Calculation
+    solar_capex_rs = solar_kw_capacity * solar_cost_rs_per_kw
+    battery_capex_rs = battery_kwh_capacity * battery_cost_rs_per_kwh
+    total_capex_rs = solar_capex_rs + battery_capex_rs
+    
+    # Financial Savings Calculation
+    annual_bill_without_renewables_rs = annual_demand_kwh * grid_rate_rs_per_kwh
+    annual_bill_savings_rs = annual_renewable_kwh_used * grid_rate_rs_per_kwh
+    annual_bill_with_renewables_rs = max(0.0, annual_bill_without_renewables_rs - annual_bill_savings_rs)
+    
+    # Payback Period Calculation
+    if annual_bill_savings_rs > 0:
+        payback_float_years = total_capex_rs / annual_bill_savings_rs
+        years = int(payback_float_years)
+        months = int(round((payback_float_years - years) * 12))
+        if months == 12:
+            years += 1
+            months = 0
+    else:
+        years = 99
+        months = 0
+        payback_float_years = 99.0
+        
+    return {
+        'solar_capex_rs': float(solar_capex_rs),
+        'battery_capex_rs': float(battery_capex_rs),
+        'total_capex_rs': float(total_capex_rs),
+        'annual_demand_kwh': float(annual_demand_kwh),
+        'annual_renewable_kwh_used': float(annual_renewable_kwh_used),
+        'annual_bill_without_renewables_rs': float(annual_bill_without_renewables_rs),
+        'annual_bill_savings_rs': float(annual_bill_savings_rs),
+        'annual_bill_with_renewables_rs': float(annual_bill_with_renewables_rs),
+        'payback_float_years': float(payback_float_years),
+        'payback_years': years,
+        'payback_months': months,
+        'payback_str': f"{years} Years, {months} Months" if years < 50 else "N/A (No Savings)"
+    }
