@@ -201,9 +201,9 @@ def main():
         st.subheader(f"📋 Renewable Fulfillment & Payoff Summary for {st.session_state.selected_profile}")
         
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-        m_col1.metric("🌱 Renewable Energy Share", f"{kpis['overall_renewable_contribution_pct']:.1f}%")
-        m_col2.metric("🔌 Grid Import Reliance", f"{100.0 - kpis['overall_renewable_contribution_pct']:.1f}%")
-        m_col3.metric("⚡ Period Consumption", f"{kpis['total_demand_kWh']:,.1f} kWh")
+        m_col1.metric("🌱 Renewable Energy Share", f"{kpis.get('overall_renewable_contribution_pct', 0.0):.1f}%")
+        m_col2.metric("🔌 Grid Import Reliance", f"{100.0 - kpis.get('overall_renewable_contribution_pct', 0.0):.1f}%")
+        m_col3.metric("⚡ Period Consumption", f"{kpis.get('total_demand_kWh', 0.0):,.1f} kWh")
         m_col4.metric("💰 Grid Electricity Rate", f"₹{grid_tariff_rs:.2f} / kWh")
 
         st.divider()
@@ -213,15 +213,16 @@ def main():
         
         f_col1, f_col2, f_col3, f_col4 = st.columns(4)
         
-        capex_lakhs = fin_results['total_capex_rs'] / 100000.0
-        savings_lakhs = fin_results['annual_bill_savings_rs'] / 100000.0
+        capex_lakhs = fin_results.get('total_capex_rs', 0.0) / 100000.0
+        savings_lakhs = fin_results.get('annual_bill_savings_rs', 0.0) / 100000.0
+        bill_with_renewables_lakhs = fin_results.get('annual_bill_with_renewables_rs', 0.0) / 100000.0
         
         f_col1.metric("🏗️ Capital Investment (CAPEX)", f"₹{capex_lakhs:,.2f} Lakhs")
         f_col2.metric("💵 Annual Bill Savings", f"₹{savings_lakhs:,.2f} Lakhs / yr")
-        f_col3.metric("📉 Reduced Annual Bill", f"₹{fin_results['annual_bill_with_renewables_rs']/100000.0:,.2f} Lakhs")
-        f_col4.metric("⏳ Estimated Payoff Period", fin_results['payback_str'], delta="Return on Investment")
+        f_col3.metric("📉 Reduced Annual Bill", f"₹{bill_with_renewables_lakhs:,.2f} Lakhs")
+        f_col4.metric("⏳ Estimated Payoff Period", fin_results.get('payback_str', 'N/A'), delta="Return on Investment")
 
-        st.success(f"**Key Takeaway**: With a **{solar_kw_cap:.1f} kW Solar Array** and **{bess_capacity:.1f} kWh Battery Storage**, the **{st.session_state.selected_profile}** achieves **{kpis['overall_renewable_contribution_pct']:.1f}% renewable energy fulfillment**. The total investment of **₹{fin_results['total_capex_rs']:,.0f}** pays for itself in **{fin_results['payback_str']}**.")
+        st.success(f"**Key Takeaway**: With a **{solar_kw_cap:.1f} kW Solar Array** and **{bess_capacity:.1f} kWh Battery Storage**, the **{st.session_state.selected_profile}** achieves **{kpis.get('overall_renewable_contribution_pct', 0.0):.1f}% renewable energy fulfillment**. The total investment of **₹{fin_results.get('total_capex_rs', 0.0):,.0f}** pays for itself in **{fin_results.get('payback_str', 'N/A')}**.")
 
         st.divider()
 
@@ -233,13 +234,13 @@ def main():
         with g_col1:
             st.markdown("##### 1. Renewable Energy Fulfillment Mix (Donut Chart)")
             
-            # Donut chart data
+            # Safe key access with fallbacks
+            direct_solar = kpis.get('total_direct_solar_kWh', max(0.0, kpis.get('total_renewable_used_kWh', 0.0) - kpis.get('total_battery_discharge_kWh', 0.0)))
+            battery_discharge = kpis.get('total_battery_discharge_kWh', 0.0)
+            grid_import = kpis.get('total_grid_import_kWh', 0.0)
+
             mix_labels = ['Direct Solar Used', 'Battery Discharge Used', 'Net Grid Import Needed']
-            mix_values = [
-                kpis['total_direct_solar_kWh'],
-                kpis['total_battery_discharge_kWh'],
-                kpis['total_grid_import_kWh']
-            ]
+            mix_values = [direct_solar, battery_discharge, grid_import]
             mix_colors = ['#FECB52', '#00CC96', '#636EFA']
             
             fig_mix = go.Figure(data=[go.Pie(
@@ -260,12 +261,14 @@ def main():
         with g_col2:
             st.markdown("##### 2. Cumulative Cash Flow & Payoff Point (12-Year Curve)")
             
-            # Cumulative Cash Flow Line Chart
+            years_vec = fin_results.get('cash_flow_years', list(range(0, 13)))
+            cf_vec = fin_results.get('cash_flow_lakhs', [-capex_lakhs + y * savings_lakhs for y in years_vec])
+            
             fig_cf = go.Figure()
             
             fig_cf.add_trace(go.Scatter(
-                x=fin_results['cash_flow_years'],
-                y=fin_results['cash_flow_lakhs'],
+                x=years_vec,
+                y=cf_vec,
                 mode='lines+markers',
                 name='Cumulative Balance (₹ Lakhs)',
                 line=dict(color='#00CC96', width=3),
@@ -279,11 +282,12 @@ def main():
             )
             
             # Annotation for Payoff Year
-            if fin_results['payback_float_years'] <= 12:
+            payback_years_float = fin_results.get('payback_float_years', 99.0)
+            if payback_years_float <= 12:
                 fig_cf.add_annotation(
-                    x=fin_results['payback_float_years'],
+                    x=payback_years_float,
                     y=0,
-                    text=f"Payoff: {fin_results['payback_str']}",
+                    text=f"Payoff: {fin_results.get('payback_str', '')}",
                     showarrow=True,
                     arrowhead=2,
                     arrowcolor="green",
@@ -303,12 +307,12 @@ def main():
         st.markdown("##### 3. Annual Electricity Bill Comparison (₹ Lakhs / Year)")
         
         # Financial Comparison Bar Chart
+        bill_without = fin_results.get('annual_bill_without_renewables_rs', 0.0) / 100000.0
+        bill_with = fin_results.get('annual_bill_with_renewables_rs', 0.0) / 100000.0
+        bill_sav = fin_results.get('annual_bill_savings_rs', 0.0) / 100000.0
+
         bill_labels = ['Bill WITHOUT Renewables', 'Bill WITH Renewables & Battery', 'Annual Net Savings']
-        bill_values = [
-            fin_results['annual_bill_without_renewables_rs'] / 100000.0,
-            fin_results['annual_bill_with_renewables_rs'] / 100000.0,
-            fin_results['annual_bill_savings_rs'] / 100000.0
-        ]
+        bill_values = [bill_without, bill_with, bill_sav]
         bill_colors = ['#EF553B', '#636EFA', '#00CC96']
         
         fig_bill = go.Figure([go.Bar(
