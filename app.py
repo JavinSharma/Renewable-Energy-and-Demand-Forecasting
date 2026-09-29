@@ -4,12 +4,13 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.express as px
 from plotly.subplots import make_subplots
 
 from src.energy_manager import compute_energy_balance, compute_financial_payback
 
 st.set_page_config(
-    page_title="Smart Energy Forecasting & Renewable Payoff Calculator",
+    page_title="Smart Energy Forecasting & Renewable Payoff Platform",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -61,7 +62,7 @@ def load_datasets():
 def main():
     # Header Banner
     st.title("⚡ Smart Energy Demand Forecasting & Renewable Payoff Platform")
-    st.caption("AI load forecasting, solar generation prediction, renewable fulfillment reporting, and investment payoff calculation.")
+    st.caption("AI load forecasting, solar generation prediction, renewable fulfillment reporting, and investment payback visualizer.")
     st.divider()
 
     df_demand, df_solar = load_datasets()
@@ -191,8 +192,8 @@ def main():
 
     # Display Dashboard Tabs
     tab1, tab2, tab3 = st.tabs([
-        "🌱 User Renewable Fulfillment & Payoff Report",
-        "📊 Integrated Load & Solar Curves",
+        "🌱 User Renewable Fulfillment & Payoff Visualizer",
+        "📈 Integrated Load & Solar Curves",
         "🤖 Data & System Diagnostics"
     ])
 
@@ -200,33 +201,129 @@ def main():
         st.subheader(f"📋 Renewable Fulfillment & Payoff Summary for {st.session_state.selected_profile}")
         
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-        m_col1.metric("🌱 Consumption Met by Renewables", f"{kpis['overall_renewable_contribution_pct']:.1f}%")
-        m_col2.metric("🔌 Remaining Grid Dependency", f"{100.0 - kpis['overall_renewable_contribution_pct']:.1f}%")
-        m_col3.metric("⚡ Total Period Consumption", f"{kpis['total_demand_kWh']:,.1f} kWh")
-        m_col4.metric("💰 Grid Tariff Rate", f"₹{grid_tariff_rs:.2f} / kWh")
+        m_col1.metric("🌱 Renewable Energy Share", f"{kpis['overall_renewable_contribution_pct']:.1f}%")
+        m_col2.metric("🔌 Grid Import Reliance", f"{100.0 - kpis['overall_renewable_contribution_pct']:.1f}%")
+        m_col3.metric("⚡ Period Consumption", f"{kpis['total_demand_kWh']:,.1f} kWh")
+        m_col4.metric("💰 Grid Electricity Rate", f"₹{grid_tariff_rs:.2f} / kWh")
 
         st.divider()
 
         # Financial Investment & Payback Summary Banner
-        st.subheader("💳 Financial Investment & System Payoff Calculation")
+        st.subheader("💳 Investment Summary & Payoff Period")
         
         f_col1, f_col2, f_col3, f_col4 = st.columns(4)
         
         capex_lakhs = fin_results['total_capex_rs'] / 100000.0
         savings_lakhs = fin_results['annual_bill_savings_rs'] / 100000.0
         
-        f_col1.metric("🏗️ Total Capital Investment (CAPEX)", f"₹{capex_lakhs:,.2f} Lakhs")
-        f_col2.metric("💵 Annual Bill Savings", f"₹{savings_lakhs:,.2f} Lakhs / year")
-        f_col3.metric("📉 Annual Bill (With Solar+BESS)", f"₹{fin_results['annual_bill_with_renewables_rs']/100000.0:,.2f} Lakhs")
-        
-        # Highlight Payback Period
+        f_col1.metric("🏗️ Capital Investment (CAPEX)", f"₹{capex_lakhs:,.2f} Lakhs")
+        f_col2.metric("💵 Annual Bill Savings", f"₹{savings_lakhs:,.2f} Lakhs / yr")
+        f_col3.metric("📉 Reduced Annual Bill", f"₹{fin_results['annual_bill_with_renewables_rs']/100000.0:,.2f} Lakhs")
         f_col4.metric("⏳ Estimated Payoff Period", fin_results['payback_str'], delta="Return on Investment")
 
-        st.success(f"**Payoff Summary**: With a solar array of `{solar_kw_cap:.1f} kW` and battery storage of `{bess_capacity:.1f} kWh`, the **{st.session_state.selected_profile}** achieves **{kpis['overall_renewable_contribution_pct']:.1f}% renewable energy fulfillment**. The total investment of **₹{fin_results['total_capex_rs']:,.0f}** will pay for itself in **{fin_results['payback_str']}**.")
+        st.success(f"**Key Takeaway**: With a **{solar_kw_cap:.1f} kW Solar Array** and **{bess_capacity:.1f} kWh Battery Storage**, the **{st.session_state.selected_profile}** achieves **{kpis['overall_renewable_contribution_pct']:.1f}% renewable energy fulfillment**. The total investment of **₹{fin_results['total_capex_rs']:,.0f}** pays for itself in **{fin_results['payback_str']}**.")
 
-        # Breakdown Progress Bars
-        st.markdown("#### Renewable vs Grid Fulfillment Breakdown")
-        st.progress(min(1.0, kpis['overall_renewable_contribution_pct'] / 100.0))
+        st.divider()
+
+        # Visual Demonstration Graphs
+        st.subheader("📊 Visual Breakdown & Payoff Trajectory")
+
+        g_col1, g_col2 = st.columns(2)
+
+        with g_col1:
+            st.markdown("##### 1. Renewable Energy Fulfillment Mix (Donut Chart)")
+            
+            # Donut chart data
+            mix_labels = ['Direct Solar Used', 'Battery Discharge Used', 'Net Grid Import Needed']
+            mix_values = [
+                kpis['total_direct_solar_kWh'],
+                kpis['total_battery_discharge_kWh'],
+                kpis['total_grid_import_kWh']
+            ]
+            mix_colors = ['#FECB52', '#00CC96', '#636EFA']
+            
+            fig_mix = go.Figure(data=[go.Pie(
+                labels=mix_labels,
+                values=mix_values,
+                hole=.45,
+                marker=dict(colors=mix_colors),
+                textinfo='label+percent',
+                insidetextorientation='radial'
+            )])
+            fig_mix.update_layout(
+                height=350,
+                margin=dict(l=10, r=10, t=20, b=10),
+                legend=dict(orientation="h", yanchor="bottom", y=-0.15)
+            )
+            st.plotly_chart(fig_mix, use_container_width=True)
+
+        with g_col2:
+            st.markdown("##### 2. Cumulative Cash Flow & Payoff Point (12-Year Curve)")
+            
+            # Cumulative Cash Flow Line Chart
+            fig_cf = go.Figure()
+            
+            fig_cf.add_trace(go.Scatter(
+                x=fin_results['cash_flow_years'],
+                y=fin_results['cash_flow_lakhs'],
+                mode='lines+markers',
+                name='Cumulative Balance (₹ Lakhs)',
+                line=dict(color='#00CC96', width=3),
+                marker=dict(size=7)
+            ))
+            
+            # Zero Break-Even Reference Line
+            fig_cf.add_shape(
+                type="line", x0=0, y0=0, x1=12, y1=0,
+                line=dict(color="Red", width=2, dash="dash")
+            )
+            
+            # Annotation for Payoff Year
+            if fin_results['payback_float_years'] <= 12:
+                fig_cf.add_annotation(
+                    x=fin_results['payback_float_years'],
+                    y=0,
+                    text=f"Payoff: {fin_results['payback_str']}",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor="green",
+                    ax=0,
+                    ay=-40
+                )
+
+            fig_cf.update_layout(
+                height=350,
+                margin=dict(l=10, r=10, t=20, b=10),
+                xaxis_title="Years",
+                yaxis_title="Net Cumulative Balance (₹ Lakhs)",
+                hovermode="x"
+            )
+            st.plotly_chart(fig_cf, use_container_width=True)
+
+        st.markdown("##### 3. Annual Electricity Bill Comparison (₹ Lakhs / Year)")
+        
+        # Financial Comparison Bar Chart
+        bill_labels = ['Bill WITHOUT Renewables', 'Bill WITH Renewables & Battery', 'Annual Net Savings']
+        bill_values = [
+            fin_results['annual_bill_without_renewables_rs'] / 100000.0,
+            fin_results['annual_bill_with_renewables_rs'] / 100000.0,
+            fin_results['annual_bill_savings_rs'] / 100000.0
+        ]
+        bill_colors = ['#EF553B', '#636EFA', '#00CC96']
+        
+        fig_bill = go.Figure([go.Bar(
+            x=bill_labels,
+            y=bill_values,
+            marker_color=bill_colors,
+            text=[f"₹{v:.2f} Lakhs" for v in bill_values],
+            textposition='auto'
+        )])
+        fig_bill.update_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=20, b=10),
+            yaxis_title="Amount (₹ Lakhs)"
+        )
+        st.plotly_chart(fig_bill, use_container_width=True)
 
     with tab2:
         st.subheader("📈 Hourly Energy Generation & Storage Profile")

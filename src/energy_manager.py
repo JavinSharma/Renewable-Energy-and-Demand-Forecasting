@@ -133,8 +133,11 @@ def compute_energy_balance(
     df['battery_soc_pct'] = (soc_kwh / max(1.0, battery_capacity_kwh)) * 100.0
     df['dispatch_status'] = dispatch_status
 
+    # Direct solar used to power demand
+    df['direct_solar_used_kWh'] = np.minimum(df['demand_kWh'], df['solar_kWh'])
+
     # Renewable contribution calculation: (Direct Solar + Battery Discharge) / Demand * 100
-    df['renewable_kWh_used'] = np.minimum(df['demand_kWh'], df['solar_kWh'] + df['battery_discharge_kWh'])
+    df['renewable_kWh_used'] = np.minimum(df['demand_kWh'], df['direct_solar_used_kWh'] + df['battery_discharge_kWh'])
     df['renewable_contribution_pct'] = np.where(
         df['demand_kWh'] > 0,
         np.minimum(100.0, (df['renewable_kWh_used'] / df['demand_kWh']) * 100.0),
@@ -144,6 +147,8 @@ def compute_energy_balance(
     # Compute Summary KPIs
     total_demand = df['demand_kWh'].sum()
     total_solar = df['solar_kWh'].sum()
+    total_direct_solar = df['direct_solar_used_kWh'].sum()
+    total_battery_discharge = df['battery_discharge_kWh'].sum()
     total_grid_import = df['net_grid_import_kWh'].sum()
     total_surplus_export = df['surplus_export_kWh'].sum()
     total_renewable_used = df['renewable_kWh_used'].sum()
@@ -152,6 +157,8 @@ def compute_energy_balance(
     kpis = {
         'total_demand_kWh': float(total_demand),
         'total_solar_kWh': float(total_solar),
+        'total_direct_solar_kWh': float(total_direct_solar),
+        'total_battery_discharge_kWh': float(total_battery_discharge),
         'total_grid_import_kWh': float(total_grid_import),
         'total_surplus_export_kWh': float(total_surplus_export),
         'total_renewable_used_kWh': float(total_renewable_used),
@@ -174,8 +181,8 @@ def compute_financial_payback(
     battery_cost_rs_per_kwh=18000.0
 ):
     """
-    Calculates initial capital investment, annual electricity bill savings,
-    and payback period (Years & Months) in Rupees (₹).
+    Calculates capital investment, annual bill savings, payback period (Years & Months),
+    and 12-year cumulative cash flow trajectory in Rupees (₹).
     """
     hours_in_period = max(1, kpis.get('total_hours', 24))
     annual_factor = 8760.0 / hours_in_period
@@ -205,6 +212,10 @@ def compute_financial_payback(
         years = 99
         months = 0
         payback_float_years = 99.0
+
+    # 12-Year Cumulative Cash Flow Curve (in ₹ Lakhs)
+    years_list = list(range(0, 13))
+    cash_flow_lakhs = [-total_capex_rs / 100000.0 + (y * annual_bill_savings_rs / 100000.0) for y in years_list]
         
     return {
         'solar_capex_rs': float(solar_capex_rs),
@@ -218,5 +229,7 @@ def compute_financial_payback(
         'payback_float_years': float(payback_float_years),
         'payback_years': years,
         'payback_months': months,
-        'payback_str': f"{years} Years, {months} Months" if years < 50 else "N/A (No Savings)"
+        'payback_str': f"{years} Years, {months} Months" if years < 50 else "N/A (No Savings)",
+        'cash_flow_years': years_list,
+        'cash_flow_lakhs': cash_flow_lakhs
     }
