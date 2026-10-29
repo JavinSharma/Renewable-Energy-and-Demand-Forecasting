@@ -105,6 +105,12 @@ def main():
     solar_cost_per_kw = st.sidebar.slider("Solar Panel System Cost (₹/kW)", min_value=30000.0, max_value=100000.0, value=55000.0, step=2500.0)
     battery_cost_per_kwh = st.sidebar.slider("Battery Storage Cost (₹/kWh)", min_value=8000.0, max_value=35000.0, value=18000.0, step=1000.0)
 
+    st.sidebar.subheader("🏛️ Advanced Financial Settings")
+    tax_incentive_pct = st.sidebar.slider("Government Tax Incentive / Subsidy (%)", min_value=0.0, max_value=50.0, value=0.0, step=5.0, help="PM Surya Ghar Yojana offers up to 40% subsidy on residential solar in India.")
+    discount_rate_pct = st.sidebar.slider("Discount Rate / WACC (% per year)", min_value=1.0, max_value=20.0, value=8.0, step=0.5, help="Opportunity cost of capital or expected return from alternative investment.")
+    elec_inflation_pct = st.sidebar.slider("Electricity Tariff Inflation (% per year)", min_value=0.0, max_value=10.0, value=4.0, step=0.5, help="Annual rate at which grid electricity cost rises.")
+    panel_lifetime_yrs = st.sidebar.selectbox("Solar Panel Lifetime (Years)", [15, 20, 25, 30], index=2, help="Most commercial panels are rated 25–30 years.")
+
     if input_mode == "📅 Historical Benchmark Analysis":
         if df_demand is None or df_demand.empty:
             st.error("Demand dataset not found. Run `python src/train_demand_model.py` first.")
@@ -187,7 +193,11 @@ def main():
         battery_kwh_capacity=bess_capacity,
         grid_rate_rs_per_kwh=grid_tariff_rs,
         solar_cost_rs_per_kw=solar_cost_per_kw,
-        battery_cost_rs_per_kwh=battery_cost_per_kwh
+        battery_cost_rs_per_kwh=battery_cost_per_kwh,
+        tax_incentive_pct=tax_incentive_pct,
+        discount_rate_pct=discount_rate_pct,
+        panel_lifetime_years=panel_lifetime_yrs,
+        electricity_inflation_pct=elec_inflation_pct
     )
 
     # Display Dashboard Tabs
@@ -210,124 +220,124 @@ def main():
 
         # Financial Investment & Payback Summary Banner
         st.subheader("💳 Investment Summary & Payoff Period")
-        
-        f_col1, f_col2, f_col3, f_col4 = st.columns(4)
-        
-        capex_lakhs = fin_results.get('total_capex_rs', 0.0) / 100000.0
-        savings_lakhs = fin_results.get('annual_bill_savings_rs', 0.0) / 100000.0
-        bill_with_renewables_lakhs = fin_results.get('annual_bill_with_renewables_rs', 0.0) / 100000.0
-        
-        f_col1.metric("🏗️ Capital Investment (CAPEX)", f"₹{capex_lakhs:,.2f} Lakhs")
-        f_col2.metric("💵 Annual Bill Savings", f"₹{savings_lakhs:,.2f} Lakhs / yr")
-        f_col3.metric("📉 Reduced Annual Bill", f"₹{bill_with_renewables_lakhs:,.2f} Lakhs")
-        f_col4.metric("⏳ Estimated Payoff Period", fin_results.get('payback_str', 'N/A'), delta="Return on Investment")
 
-        st.success(f"**Key Takeaway**: With a **{solar_kw_cap:.1f} kW Solar Array** and **{bess_capacity:.1f} kWh Battery Storage**, the **{st.session_state.selected_profile}** achieves **{kpis.get('overall_renewable_contribution_pct', 0.0):.1f}% renewable energy fulfillment**. The total investment of **₹{fin_results.get('total_capex_rs', 0.0):,.0f}** pays for itself in **{fin_results.get('payback_str', 'N/A')}**.")
+        gross_capex_lakhs = fin_results.get('gross_capex_rs', 0.0) / 100000.0
+        tax_saving_lakhs  = fin_results.get('tax_incentive_rs', 0.0) / 100000.0
+        net_capex_lakhs   = fin_results.get('net_capex_rs', 0.0) / 100000.0
+        savings_lakhs     = fin_results.get('annual_bill_savings_rs', 0.0) / 100000.0
+        bill_with_lakhs   = fin_results.get('annual_bill_with_renewables_rs', 0.0) / 100000.0
+        npv_lakhs         = fin_results.get('npv_rs', 0.0) / 100000.0
+        lifetime_gross_lk = fin_results.get('lifetime_gross_savings_rs', 0.0) / 100000.0
+
+        f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
+        f_col1.metric("🏗️ Gross CAPEX",       f"₹{gross_capex_lakhs:,.2f} L",
+                      delta=f"-₹{tax_saving_lakhs:,.2f} L Subsidy" if tax_saving_lakhs > 0 else None)
+        f_col2.metric("💳 Net Investment",    f"₹{net_capex_lakhs:,.2f} L")
+        f_col3.metric("💵 Annual Savings (Y1)", f"₹{savings_lakhs:,.2f} L / yr")
+        f_col4.metric("⏳ Simple Payback",     fin_results.get('payback_str', 'N/A'))
+        npv_color = "normal" if npv_lakhs >= 0 else "inverse"
+        f_col5.metric("📈 NPV (over lifetime)", f"₹{npv_lakhs:,.2f} L",
+                      delta=f"{panel_lifetime_yrs}-yr @ {discount_rate_pct:.1f}% discount")
+
+        if npv_lakhs >= 0:
+            st.success(f"**Investment is viable.** With a **{solar_kw_cap:.0f} kW Solar + {bess_capacity:.0f} kWh Battery** system, "
+                       f"the **{st.session_state.selected_profile}** covers **{kpis.get('overall_renewable_contribution_pct', 0.0):.1f}%** of demand from renewables. "
+                       f"Net investment after **{tax_incentive_pct:.0f}% subsidy** is **₹{net_capex_lakhs:,.2f} Lakhs**, "
+                       f"paying off in **{fin_results.get('payback_str','N/A')}** and generating an NPV of **₹{npv_lakhs:,.2f} Lakhs** over {panel_lifetime_yrs} years.")
+        else:
+            st.warning(f"**NPV is negative** at the current discount rate ({discount_rate_pct:.1f}%). "
+                       f"Try increasing the panel lifetime, reducing CAPEX, or applying a tax incentive.")
 
         st.divider()
 
-        # Visual Demonstration Graphs
+        # ── Visual Charts ────────────────────────────────────────────────────
         st.subheader("📊 Visual Breakdown & Payoff Trajectory")
 
         g_col1, g_col2 = st.columns(2)
 
+        # ── Chart 1: Energy Mix Donut ─────────────────────────────────────────
         with g_col1:
-            st.markdown("##### 1. Renewable Energy Fulfillment Mix (Donut Chart)")
-            
-            # Safe key access with fallbacks
-            direct_solar = kpis.get('total_direct_solar_kWh', max(0.0, kpis.get('total_renewable_used_kWh', 0.0) - kpis.get('total_battery_discharge_kWh', 0.0)))
-            battery_discharge = kpis.get('total_battery_discharge_kWh', 0.0)
-            grid_import = kpis.get('total_grid_import_kWh', 0.0)
+            st.markdown("##### 1. Renewable Energy Fulfillment Mix")
+            direct_solar     = kpis.get('total_direct_solar_kWh', 0.0)
+            battery_disc     = kpis.get('total_battery_discharge_kWh', 0.0)
+            grid_imp         = kpis.get('total_grid_import_kWh', 0.0)
 
-            mix_labels = ['Direct Solar Used', 'Battery Discharge Used', 'Net Grid Import Needed']
-            mix_values = [direct_solar, battery_discharge, grid_import]
-            mix_colors = ['#FECB52', '#00CC96', '#636EFA']
-            
             fig_mix = go.Figure(data=[go.Pie(
-                labels=mix_labels,
-                values=mix_values,
+                labels=['Direct Solar', 'Battery Discharged', 'Grid Import'],
+                values=[direct_solar, battery_disc, grid_imp],
                 hole=.45,
-                marker=dict(colors=mix_colors),
+                marker=dict(colors=['#FECB52', '#00CC96', '#636EFA']),
                 textinfo='label+percent',
                 insidetextorientation='radial'
             )])
-            fig_mix.update_layout(
-                height=350,
-                margin=dict(l=10, r=10, t=20, b=10),
-                legend=dict(orientation="h", yanchor="bottom", y=-0.15)
-            )
+            fig_mix.update_layout(height=340, margin=dict(l=10, r=10, t=20, b=10),
+                                  legend=dict(orientation="h", yanchor="bottom", y=-0.15))
             st.plotly_chart(fig_mix, use_container_width=True)
 
+        # ── Chart 2: Cumulative Cash Flow — Undiscounted vs NPV Curve ─────────
         with g_col2:
-            st.markdown("##### 2. Cumulative Cash Flow & Payoff Point (12-Year Curve)")
-            
-            years_vec = fin_results.get('cash_flow_years', list(range(0, 13)))
-            cf_vec = fin_results.get('cash_flow_lakhs', [-capex_lakhs + y * savings_lakhs for y in years_vec])
-            
-            fig_cf = go.Figure()
-            
-            fig_cf.add_trace(go.Scatter(
-                x=years_vec,
-                y=cf_vec,
-                mode='lines+markers',
-                name='Cumulative Balance (₹ Lakhs)',
-                line=dict(color='#00CC96', width=3),
-                marker=dict(size=7)
-            ))
-            
-            # Zero Break-Even Reference Line
-            fig_cf.add_shape(
-                type="line", x0=0, y0=0, x1=12, y1=0,
-                line=dict(color="Red", width=2, dash="dash")
-            )
-            
-            # Annotation for Payoff Year
-            payback_years_float = fin_results.get('payback_float_years', 99.0)
-            if payback_years_float <= 12:
-                fig_cf.add_annotation(
-                    x=payback_years_float,
-                    y=0,
-                    text=f"Payoff: {fin_results.get('payback_str', '')}",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowcolor="green",
-                    ax=0,
-                    ay=-40
-                )
+            st.markdown(f"##### 2. Cumulative Cash Flow vs NPV ({panel_lifetime_yrs}-Year Horizon)")
+            years_vec = fin_results.get('cash_flow_years', [])
+            cf_vec    = fin_results.get('cash_flow_lakhs', [])
+            dcf_vec   = fin_results.get('dcf_lakhs', [])
+            payback_f = fin_results.get('payback_float_years', 99.0)
 
+            fig_cf = go.Figure()
+            fig_cf.add_trace(go.Scatter(
+                x=years_vec, y=cf_vec, mode='lines+markers',
+                name='Undiscounted Cash Flow (₹ L)',
+                line=dict(color='#00CC96', width=2.5), marker=dict(size=5)
+            ))
+            fig_cf.add_trace(go.Scatter(
+                x=years_vec, y=dcf_vec, mode='lines+markers',
+                name=f'NPV @ {discount_rate_pct:.1f}% Discount (₹ L)',
+                line=dict(color='#636EFA', width=2.5, dash='dot'), marker=dict(size=5)
+            ))
+            fig_cf.add_shape(type="line", x0=0, y0=0, x1=max(years_vec or [1]), y1=0,
+                             line=dict(color="Red", width=1.8, dash="dash"))
+            if payback_f <= panel_lifetime_yrs:
+                fig_cf.add_annotation(
+                    x=payback_f, y=0,
+                    text=f"Simple Payoff: {fin_results.get('payback_str','')}",
+                    showarrow=True, arrowhead=2, arrowcolor="orange", ax=0, ay=-44
+                )
             fig_cf.update_layout(
-                height=350,
+                height=340, hovermode="x unified",
                 margin=dict(l=10, r=10, t=20, b=10),
-                xaxis_title="Years",
-                yaxis_title="Net Cumulative Balance (₹ Lakhs)",
-                hovermode="x"
+                xaxis_title="Years", yaxis_title="Cumulative Balance (₹ Lakhs)",
+                legend=dict(orientation="h", yanchor="bottom", y=-0.2)
             )
             st.plotly_chart(fig_cf, use_container_width=True)
 
+        # ── Chart 3: Annual Bill Comparison ──────────────────────────────────
         st.markdown("##### 3. Annual Electricity Bill Comparison (₹ Lakhs / Year)")
-        
-        # Financial Comparison Bar Chart
         bill_without = fin_results.get('annual_bill_without_renewables_rs', 0.0) / 100000.0
-        bill_with = fin_results.get('annual_bill_with_renewables_rs', 0.0) / 100000.0
-        bill_sav = fin_results.get('annual_bill_savings_rs', 0.0) / 100000.0
-
-        bill_labels = ['Bill WITHOUT Renewables', 'Bill WITH Renewables & Battery', 'Annual Net Savings']
-        bill_values = [bill_without, bill_with, bill_sav]
-        bill_colors = ['#EF553B', '#636EFA', '#00CC96']
-        
         fig_bill = go.Figure([go.Bar(
-            x=bill_labels,
-            y=bill_values,
-            marker_color=bill_colors,
-            text=[f"₹{v:.2f} Lakhs" for v in bill_values],
+            x=['Bill WITHOUT Renewables', 'Bill WITH Renewables & Battery', 'Annual Net Savings (Y1)'],
+            y=[bill_without, bill_with_lakhs, savings_lakhs],
+            marker_color=['#EF553B', '#636EFA', '#00CC96'],
+            text=[f"₹{v:,.2f} L" for v in [bill_without, bill_with_lakhs, savings_lakhs]],
             textposition='auto'
         )])
-        fig_bill.update_layout(
-            height=300,
-            margin=dict(l=10, r=10, t=20, b=10),
-            yaxis_title="Amount (₹ Lakhs)"
-        )
+        fig_bill.update_layout(height=280, margin=dict(l=10, r=10, t=20, b=10),
+                               yaxis_title="Amount (₹ Lakhs)")
         st.plotly_chart(fig_bill, use_container_width=True)
+
+        # ── Chart 4: Year-by-Year Escalating Annual Savings Bar ───────────────
+        st.markdown(f"##### 4. Year-by-Year Annual Savings Over {panel_lifetime_yrs}-Year Lifetime (₹ Lakhs)")
+        ann_sav = fin_results.get('annual_savings_lakhs', [])
+        yr_labels = [f"Y{y}" for y in fin_results.get('cash_flow_years', [])]
+        fig_annual = go.Figure([go.Bar(
+            x=yr_labels[1:], y=ann_sav[1:],
+            marker_color='#00CC96',
+            name='Annual Savings (₹ L)'
+        )])
+        fig_annual.update_layout(
+            height=280, margin=dict(l=10, r=10, t=20, b=10),
+            xaxis_title="Year", yaxis_title="₹ Lakhs Saved",
+            xaxis=dict(tickmode='linear', dtick=max(1, panel_lifetime_yrs // 10))
+        )
+        st.plotly_chart(fig_annual, use_container_width=True)
 
     with tab2:
         st.subheader("📈 Hourly Energy Generation & Storage Profile")

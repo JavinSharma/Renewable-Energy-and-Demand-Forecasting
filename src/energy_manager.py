@@ -178,58 +178,120 @@ def compute_financial_payback(
     battery_kwh_capacity,
     grid_rate_rs_per_kwh=8.5,
     solar_cost_rs_per_kw=55000.0,
-    battery_cost_rs_per_kwh=18000.0
+    battery_cost_rs_per_kwh=18000.0,
+    tax_incentive_pct=0.0,
+    discount_rate_pct=8.0,
+    panel_lifetime_years=25,
+    electricity_inflation_pct=4.0
 ):
     """
-    Calculates capital investment, annual bill savings, payback period (Years & Months),
-    and 12-year cumulative cash flow trajectory in Rupees (₹).
+    Calculates capital investment (after tax incentives), annual bill savings,
+    simple payback period, Net Present Value (NPV) over the panel lifetime,
+    and year-by-year discounted cash flow curve in Rupees (INR).
+
+    Parameters:
+    -----------
+    tax_incentive_pct : float
+        Government subsidy / tax credit as % of total CAPEX (e.g. 30 for 30%).
+    discount_rate_pct : float
+        Discount rate (WACC / opportunity cost) in % per year (e.g. 8 for 8%).
+    panel_lifetime_years : int
+        Assumed operational lifetime of the solar panel system in years.
+    electricity_inflation_pct : float
+        Annual increase in grid electricity tariff in % (e.g. 4 for 4% / year).
     """
     hours_in_period = max(1, kpis.get('total_hours', 24))
     annual_factor = 8760.0 / hours_in_period
-    
+
     annual_demand_kwh = kpis['total_demand_kWh'] * annual_factor
     annual_renewable_kwh_used = kpis['total_renewable_used_kWh'] * annual_factor
-    
-    # Financial CAPEX Calculation
+
+    # ── CAPEX with Tax Incentive Adjustment ──────────────────────────────────
     solar_capex_rs = solar_kw_capacity * solar_cost_rs_per_kw
     battery_capex_rs = battery_kwh_capacity * battery_cost_rs_per_kwh
-    total_capex_rs = solar_capex_rs + battery_capex_rs
-    
-    # Financial Savings Calculation
-    annual_bill_without_renewables_rs = annual_demand_kwh * grid_rate_rs_per_kwh
-    annual_bill_savings_rs = annual_renewable_kwh_used * grid_rate_rs_per_kwh
-    annual_bill_with_renewables_rs = max(0.0, annual_bill_without_renewables_rs - annual_bill_savings_rs)
-    
-    # Payback Period Calculation
-    if annual_bill_savings_rs > 0:
-        payback_float_years = total_capex_rs / annual_bill_savings_rs
-        years = int(payback_float_years)
-        months = int(round((payback_float_years - years) * 12))
-        if months == 12:
-            years += 1
-            months = 0
-    else:
-        years = 99
-        months = 0
-        payback_float_years = 99.0
+    gross_capex_rs = solar_capex_rs + battery_capex_rs
+    tax_incentive_rs = gross_capex_rs * (tax_incentive_pct / 100.0)
+    net_capex_rs = gross_capex_rs - tax_incentive_rs          # effective investment
 
-    # 12-Year Cumulative Cash Flow Curve (in ₹ Lakhs)
-    years_list = list(range(0, 13))
-    cash_flow_lakhs = [-total_capex_rs / 100000.0 + (y * annual_bill_savings_rs / 100000.0) for y in years_list]
-        
+    # ── Baseline Annual Savings (Year 1) ─────────────────────────────────────
+    annual_bill_without_renewables_rs = annual_demand_kwh * grid_rate_rs_per_kwh
+    annual_bill_savings_y1_rs = annual_renewable_kwh_used * grid_rate_rs_per_kwh
+    annual_bill_with_renewables_rs = max(0.0, annual_bill_without_renewables_rs - annual_bill_savings_y1_rs)
+
+    # ── Simple Payback Period (no time-value, using net CAPEX) ───────────────
+    if annual_bill_savings_y1_rs > 0:
+        payback_float_years = net_capex_rs / annual_bill_savings_y1_rs
+        pb_years = int(payback_float_years)
+        pb_months = int(round((payback_float_years - pb_years) * 12))
+        if pb_months == 12:
+            pb_years += 1
+            pb_months = 0
+    else:
+        payback_float_years = 99.0
+        pb_years, pb_months = 99, 0
+
+    # ── Year-by-Year Discounted Cash Flow & NPV over lifetime ────────────────
+    r = discount_rate_pct / 100.0
+    g = electricity_inflation_pct / 100.0
+
+    years_list = list(range(0, panel_lifetime_years + 1))
+    cumulative_cf_lakhs = []          # simple cumulative (undiscounted), ₹ Lakhs
+    cumulative_dcf_lakhs = []         # discounted (NPV) cumulative, ₹ Lakhs
+    annual_savings_by_year = []       # year-by-year escalated savings
+
+    running_cf = -net_capex_rs / 100000.0
+    running_dcf = -net_capex_rs / 100000.0
+
+    for y in years_list:
+        if y == 0:
+            cumulative_cf_lakhs.append(running_cf)
+            cumulative_dcf_lakhs.append(running_dcf)
+            annual_savings_by_year.append(0.0)
+        else:
+            # Savings grow with electricity inflation each year
+            savings_this_year = annual_bill_savings_y1_rs * ((1 + g) ** (y - 1))
+            discount_factor = (1 + r) ** y
+            discounted_savings = savings_this_year / discount_factor
+
+            running_cf += savings_this_year / 100000.0
+            running_dcf += discounted_savings / 100000.0
+
+            annual_savings_by_year.append(savings_this_year / 100000.0)
+            cumulative_cf_lakhs.append(running_cf)
+            cumulative_dcf_lakhs.append(running_dcf)
+
+    npv_rs = running_dcf * 100000.0      # final NPV in ₹
+    lifetime_gross_savings_rs = sum(
+        annual_bill_savings_y1_rs * ((1 + g) ** (y - 1))
+        for y in range(1, panel_lifetime_years + 1)
+    )
+
     return {
+        # CAPEX
         'solar_capex_rs': float(solar_capex_rs),
         'battery_capex_rs': float(battery_capex_rs),
-        'total_capex_rs': float(total_capex_rs),
+        'gross_capex_rs': float(gross_capex_rs),
+        'tax_incentive_rs': float(tax_incentive_rs),
+        'net_capex_rs': float(net_capex_rs),
+        'total_capex_rs': float(net_capex_rs),          # backward compat alias
+        # Annual baseline
         'annual_demand_kwh': float(annual_demand_kwh),
         'annual_renewable_kwh_used': float(annual_renewable_kwh_used),
         'annual_bill_without_renewables_rs': float(annual_bill_without_renewables_rs),
-        'annual_bill_savings_rs': float(annual_bill_savings_rs),
+        'annual_bill_savings_rs': float(annual_bill_savings_y1_rs),
         'annual_bill_with_renewables_rs': float(annual_bill_with_renewables_rs),
+        # Simple payback
         'payback_float_years': float(payback_float_years),
-        'payback_years': years,
-        'payback_months': months,
-        'payback_str': f"{years} Years, {months} Months" if years < 50 else "N/A (No Savings)",
+        'payback_years': pb_years,
+        'payback_months': pb_months,
+        'payback_str': f"{pb_years} Years, {pb_months} Months" if pb_years < 50 else "N/A (No Savings)",
+        # NPV & lifetime
+        'npv_rs': float(npv_rs),
+        'panel_lifetime_years': panel_lifetime_years,
+        'lifetime_gross_savings_rs': float(lifetime_gross_savings_rs),
+        # Chart data (over full lifetime)
         'cash_flow_years': years_list,
-        'cash_flow_lakhs': cash_flow_lakhs
+        'cash_flow_lakhs': cumulative_cf_lakhs,          # undiscounted curve
+        'dcf_lakhs': cumulative_dcf_lakhs,               # discounted (NPV) curve
+        'annual_savings_lakhs': annual_savings_by_year,  # bar chart per year
     }
